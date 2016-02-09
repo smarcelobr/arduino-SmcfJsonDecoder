@@ -8,156 +8,214 @@
 SmcfJsonDecoder jsonDecoder;
 
 #define DEBUGGING 
+
+#define LAST_JSON_ELEMENT_NUMBER JSON_ELEMENT_BOOLEAN
+class JsonElementCounter {
+private:  
+  int counters[LAST_JSON_ELEMENT_NUMBER+1];
+  
+public:  
+  JsonElementCounter() { this->reset(); }
+  void reset() {for (int i=0;i<LAST_JSON_ELEMENT_NUMBER+1;i++) counters[i]=0;}
+  void count(int jsonElementType) { counters[jsonElementType]++; }
+  void assert(int jsonElementType, int expectedCount, __FlashStringHelper* message) { if (counters[jsonElementType]!=expectedCount) Serial.println(message); }
+};
+
 /**
  * callback for jsonparse when changename.
  * Se retornar qualquer coisa diferente de 0, para o processamento e retorna na hora.
  *
  */
-int jsonCallback(int jsonElementType, void* value) {
+int jsonCallback(int jsonElementType, void* value, void* context) {
+
+  JsonElementCounter &jsonElementCounter = *(JsonElementCounter*)context;
+  jsonElementCounter.count(jsonElementType);
+
 #ifdef DEBUGGING  
   Serial.print("jsonCallback(");
   Serial.print(jsonElementType);
   Serial.println(");");
-#endif  
   switch (jsonElementType) {
     case JSON_ELEMENT_OBJECT_START:
-#ifdef DEBUGGING  
     	Serial.println("Object Start");
-#endif
 	break;
     case JSON_ELEMENT_OBJECT_END:
-#ifdef DEBUGGING  
     	Serial.println("Object End");
-#endif
 	break;
     case JSON_ELEMENT_OBJECT_KEY: {
-#ifdef DEBUGGING  
     	Serial.print("Key: '");
         Serial.print((char*)value);
         Serial.println("'");
-#endif
 	break;
     }
     case JSON_ELEMENT_STRING: {
-#ifdef DEBUGGING
 	Serial.print("String: '");
         Serial.print((char*)value);
         Serial.println("'");
-#endif
     	break;
     }
     case JSON_ELEMENT_ARRAY_START:
-#ifdef DEBUGGING  
     	Serial.println("Array Start");
-#endif
 	break;
     case JSON_ELEMENT_ARRAY_END:
-#ifdef DEBUGGING  
     	Serial.println("Array End");
-#endif
 	break;
     case JSON_ELEMENT_NUMBER_LONG: {
-#ifdef DEBUGGING  
     	Serial.println("Number (Long) element");
-#endif
 	long number = *((long*)value);
-#ifdef DEBUGGING  
     	Serial.print("number: ");
         Serial.println(number);
-#endif
 	break;
     }
     case JSON_ELEMENT_NUMBER_DOUBLE: {
-#ifdef DEBUGGING  
     	Serial.println("Number (Double) element");
-#endif
 	double number = *((double*)value);
-#ifdef DEBUGGING  
     	Serial.print("number: ");
         Serial.println(number);
-#endif
 	break;
     }
     case JSON_ELEMENT_BOOLEAN:
-#ifdef DEBUGGING  
     	Serial.println("Boolean element");
-#endif
 	break;
   }
+#endif
 
   return JSON_ERR_NO_ERROR;
 }
 
 void teste1() {
-  Serial.println("=====TESTE 1");
-    char command[] = "{\"0\":\"TESTE\",\"1\":\"VRAND\"}";
-    int ret = jsonDecoder.decode(command, jsonCallback);
-    if (ret!=0) {
-    	Serial.print("TESTE 1 : JSON PARSER ERROR: ");
-        Serial.println(ret);
-    } else {
-    	Serial.println("TESTE 1: OK!");
-    }
+  JsonElementCounter jsonElementCounter;
+  
+  Serial.println(F("=====TESTE 1"));
+  char command[] = "{\"0\":\"TESTE\",\"1\":\"VRAND\"}";
+  int ret = jsonDecoder.decode(command, jsonCallback, &jsonElementCounter);
+  if (ret!=0) {
+      Serial.print(F("TESTE 1 : JSON PARSER ERROR: "));
+      Serial.println(ret);
+  } else {
+      jsonElementCounter.assert(JSON_ELEMENT_OBJECT_START,1,F("Inicio de objeto nao detectado."));
+      jsonElementCounter.assert(JSON_ELEMENT_OBJECT_END,1,F("Fim de objeto nao detectado."));
+      jsonElementCounter.assert(JSON_ELEMENT_OBJECT_KEY,2,F("Chaves de objetos na quantidade errada."));
+      jsonElementCounter.assert(JSON_ELEMENT_STRING,2,F("Strings na quantidade errada."));
+      jsonElementCounter.assert(JSON_ELEMENT_ARRAY_START,0,F("Inicio de Array na quantidade errada."));
+      jsonElementCounter.assert(JSON_ELEMENT_ARRAY_END,0,F("Fim de Array na quantidade errada."));
+      jsonElementCounter.assert(JSON_ELEMENT_NUMBER_LONG,0,F("Number (long) na quantidade errada."));
+      jsonElementCounter.assert(JSON_ELEMENT_NUMBER_DOUBLE,0,F("Number (double) na quantidade errada."));
+      jsonElementCounter.assert(JSON_ELEMENT_BOOLEAN,0,F("Boolean na quantidade errada."));
+  }
+  Serial.println(F("TESTE 1: END"));
 }
 
 void teste2() {
-  Serial.println("=====TESTE 2");
-    char command[] = "  [  \"0\",123 ,\"TESTE\" , \"1\\\"2\",  \"VR  AND\" ] ";
-    int ret = jsonDecoder.decode(command, jsonCallback);
-    if (ret!=0) {
-    	Serial.print("TESTE 2 : JSON PARSER ERROR: ");
-        Serial.println(ret);
-    } else {
-    	Serial.println("TESTE 2: OK");
-    }
+  JsonElementCounter jsonElementCounter;
+  Serial.println(F("=====TESTE 2"));
+  char command[] = "  [  \"0\",123 ,\"TESTE\" , \"1\\\"2\",  \"VR  AND\" ] ";
+  int ret = jsonDecoder.decode(command, jsonCallback,&jsonElementCounter);
+  if (ret!=0) {
+    Serial.print(F("TESTE 2 : JSON PARSER ERROR: "));
+    Serial.println(ret);
+  } else {
+    jsonElementCounter.assert(JSON_ELEMENT_OBJECT_START,0,F("Inicio de objeto nao detectado."));
+    jsonElementCounter.assert(JSON_ELEMENT_OBJECT_END,0,F("Fim de objeto nao detectado."));
+    jsonElementCounter.assert(JSON_ELEMENT_OBJECT_KEY,0,F("Chaves de objetos na quantidade errada."));
+    jsonElementCounter.assert(JSON_ELEMENT_STRING,4,F("Strings na quantidade errada."));
+    jsonElementCounter.assert(JSON_ELEMENT_ARRAY_START,1,F("Inicio de Array na quantidade errada."));
+    jsonElementCounter.assert(JSON_ELEMENT_ARRAY_END,1,F("Fim de Array na quantidade errada."));
+    jsonElementCounter.assert(JSON_ELEMENT_NUMBER_LONG,1,F("Number (long) na quantidade errada."));
+    jsonElementCounter.assert(JSON_ELEMENT_NUMBER_DOUBLE,0,F("Number (double) na quantidade errada."));
+    jsonElementCounter.assert(JSON_ELEMENT_BOOLEAN,0,F("Boolean na quantidade errada."));
+  }
+  Serial.println(F("TESTE 2: END"));
 }
 
 void teste3NumberLong() {
-  Serial.println("=====TESTE 3 - Number Long");
-    char command[] = "  -12345 ";
-    int ret = jsonDecoder.decode(command, jsonCallback);
-    if (ret!=0) {
-    	Serial.print("TESTE 3 : JSON PARSER ERROR: ");
-        Serial.println(ret);
-    } else {
-    	Serial.println("TESTE 3: OK");
-    }
+  JsonElementCounter jsonElementCounter;
+  
+  Serial.println(F("=====TESTE 3 - Number Long"));
+  char command[] = "  -12345 ";
+  int ret = jsonDecoder.decode(command, jsonCallback,&jsonElementCounter);
+  if (ret!=0) {
+    Serial.print(F("TESTE 3 : JSON PARSER ERROR: "));
+    Serial.println(ret);
+  } else {
+    jsonElementCounter.assert(JSON_ELEMENT_OBJECT_START,0,F("Inicio de objeto nao detectado."));
+    jsonElementCounter.assert(JSON_ELEMENT_OBJECT_END,0,F("Fim de objeto nao detectado."));
+    jsonElementCounter.assert(JSON_ELEMENT_OBJECT_KEY,0,F("Chaves de objetos na quantidade errada."));
+    jsonElementCounter.assert(JSON_ELEMENT_STRING,0,F("Strings na quantidade errada."));
+    jsonElementCounter.assert(JSON_ELEMENT_ARRAY_START,0,F("Inicio de Array na quantidade errada."));
+    jsonElementCounter.assert(JSON_ELEMENT_ARRAY_END,0,F("Fim de Array na quantidade errada."));
+    jsonElementCounter.assert(JSON_ELEMENT_NUMBER_LONG,1,F("Number (long) na quantidade errada."));
+    jsonElementCounter.assert(JSON_ELEMENT_NUMBER_DOUBLE,0,F("Number (double) na quantidade errada."));
+    jsonElementCounter.assert(JSON_ELEMENT_BOOLEAN,0,F("Boolean na quantidade errada."));
+  }
+  Serial.println(F("TESTE 3: END"));
 }
 
 void teste4ArrayMultTypes() {
-  Serial.println("=====TESTE 4");
+  JsonElementCounter jsonElementCounter;
+
+  Serial.println(F("=====TESTE 4"));
   char command[] = " [\"string somente\",{},{\"chave 1\":\"teste \\\\legal\\\\ \",\"chave 2\":4567},-9876,{\"key\":true,\"other key\":false}] ";
-  int ret = jsonDecoder.decode(command, jsonCallback);
+  int ret = jsonDecoder.decode(command, jsonCallback,&jsonElementCounter);
   if (ret!=0) {
-    Serial.println("TESTE 4 : JSON PARSER ERROR: ");
+    Serial.println(F("TESTE 4 : JSON PARSER ERROR: "));
     Serial.println(ret);
   } else {
-    Serial.println("TESTE 4: OK");
+    jsonElementCounter.assert(JSON_ELEMENT_OBJECT_START,3,F("Inicio de objeto nao detectado."));
+    jsonElementCounter.assert(JSON_ELEMENT_OBJECT_END,3,F("Fim de objeto nao detectado."));
+    jsonElementCounter.assert(JSON_ELEMENT_OBJECT_KEY,4,F("Chaves de objetos na quantidade errada."));
+    jsonElementCounter.assert(JSON_ELEMENT_STRING,2,F("Strings na quantidade errada."));
+    jsonElementCounter.assert(JSON_ELEMENT_ARRAY_START,1,F("Inicio de Array na quantidade errada."));
+    jsonElementCounter.assert(JSON_ELEMENT_ARRAY_END,1,F("Fim de Array na quantidade errada."));
+    jsonElementCounter.assert(JSON_ELEMENT_NUMBER_LONG,2,F("Number (long) na quantidade errada."));
+    jsonElementCounter.assert(JSON_ELEMENT_NUMBER_DOUBLE,0,F("Number (double) na quantidade errada."));
+    jsonElementCounter.assert(JSON_ELEMENT_BOOLEAN,2,F("Boolean na quantidade errada."));
   }
+  Serial.println(F("TESTE 4: END"));
 }
 
 void teste5Boolean() {
-  Serial.println("=====TESTE 5 - Boolean");
+  JsonElementCounter jsonElementCounter;
+  Serial.println(F("=====TESTE 5 - Boolean"));
   char command[] = "[true,false]";
-  int ret = jsonDecoder.decode(command, jsonCallback);
+  int ret = jsonDecoder.decode(command, jsonCallback,&jsonElementCounter);
   if (ret!=0) {
-    Serial.println("TESTE 5 : JSON PARSER ERROR: ");
+    Serial.println(F("TESTE 5 : JSON PARSER ERROR: "));
     Serial.println(ret);
   } else {
-    Serial.println("TESTE 5: OK");
+    jsonElementCounter.assert(JSON_ELEMENT_OBJECT_START,0,F("Inicio de objeto nao detectado."));
+    jsonElementCounter.assert(JSON_ELEMENT_OBJECT_END,0,F("Fim de objeto nao detectado."));
+    jsonElementCounter.assert(JSON_ELEMENT_OBJECT_KEY,0,F("Chaves de objetos na quantidade errada."));
+    jsonElementCounter.assert(JSON_ELEMENT_STRING,0,F("Strings na quantidade errada."));
+    jsonElementCounter.assert(JSON_ELEMENT_ARRAY_START,1,F("Inicio de Array na quantidade errada."));
+    jsonElementCounter.assert(JSON_ELEMENT_ARRAY_END,1,F("Fim de Array na quantidade errada."));
+    jsonElementCounter.assert(JSON_ELEMENT_NUMBER_LONG,0,F("Number (long) na quantidade errada."));
+    jsonElementCounter.assert(JSON_ELEMENT_NUMBER_DOUBLE,0,F("Number (double) na quantidade errada."));
+    jsonElementCounter.assert(JSON_ELEMENT_BOOLEAN,2,F("Boolean na quantidade errada."));
   }
+  Serial.println(F("TESTE 5: END"));
 }
 
 void teste6NumberDouble() {
-  Serial.println("=====TESTE 6 - Number Double");
-    char command[] = "  -12345.22 ";
-    int ret = jsonDecoder.decode(command, jsonCallback);
-    if (ret!=0) {
-    	Serial.print("TESTE 6 : JSON PARSER ERROR: ");
-        Serial.println(ret);
-    } else {
-    	Serial.println("TESTE 6: OK");
-    }
+  JsonElementCounter jsonElementCounter;
+  Serial.println(F("=====TESTE 6 - Number Double"));
+  char command[] = "  -12345.22 ";
+  int ret = jsonDecoder.decode(command, jsonCallback,&jsonElementCounter);
+  if (ret!=0) {
+    Serial.print(F("TESTE 6 : JSON PARSER ERROR: "));
+    Serial.println(ret);
+  } else {
+    jsonElementCounter.assert(JSON_ELEMENT_OBJECT_START,0,F("Inicio de objeto nao detectado."));
+    jsonElementCounter.assert(JSON_ELEMENT_OBJECT_END,0,F("Fim de objeto nao detectado."));
+    jsonElementCounter.assert(JSON_ELEMENT_OBJECT_KEY,0,F("Chaves de objetos na quantidade errada."));
+    jsonElementCounter.assert(JSON_ELEMENT_STRING,0,F("Strings na quantidade errada."));
+    jsonElementCounter.assert(JSON_ELEMENT_ARRAY_START,0,F("Inicio de Array na quantidade errada."));
+    jsonElementCounter.assert(JSON_ELEMENT_ARRAY_END,0,F("Fim de Array na quantidade errada."));
+    jsonElementCounter.assert(JSON_ELEMENT_NUMBER_LONG,0,F("Number (long) na quantidade errada."));
+    jsonElementCounter.assert(JSON_ELEMENT_NUMBER_DOUBLE,1,F("Number (double) na quantidade errada."));
+    jsonElementCounter.assert(JSON_ELEMENT_BOOLEAN,0,F("Boolean na quantidade errada."));
+  }
+  Serial.println(F("TESTE 6: END"));
 }
 
 void setup() {
@@ -169,7 +227,7 @@ void setup() {
   teste4ArrayMultTypes();
   teste5Boolean();
   teste6NumberDouble();
-  Serial.println("FIM");
+  Serial.println(F("FIM"));
 }
 
 void loop() {

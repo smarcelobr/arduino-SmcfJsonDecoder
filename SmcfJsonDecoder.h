@@ -11,7 +11,7 @@
 #include "Arduino.h"
 
 // uncomment the below line for debug messages from library:
-#define JSON_DEBUG
+//#define JSON_DEBUG
 
 // =====JSON PARSER FOR LOW RAM DEVICES
 #define JSON_KEY_MAX_SIZE 10
