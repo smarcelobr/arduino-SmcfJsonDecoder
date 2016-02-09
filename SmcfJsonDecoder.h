@@ -11,7 +11,7 @@
 #include "Arduino.h"
 
 // uncomment the below line for debug messages from library:
-//#define JSON_DEBUG
+#define JSON_DEBUG
 
 // =====JSON PARSER FOR LOW RAM DEVICES
 #define JSON_KEY_MAX_SIZE 10
@@ -39,23 +39,34 @@
 #define JSON_ERR_INVALID_JSON_EXPRESSION 7
 #define JSON_ERR_COMMA_EXPECTED 8
 #define JSON_ERR_INVALID_CHAR_AFTER_JSON 9
-#define JSON_ERR_USER_ERR_BASE 100
+#define JSON_ERR_INVALID_BOOLEAN_VALUE 10
+#define JSON_ERR_USER_BASE 100
+
+typedef int (*jsonCallback_t)(int,void*,void*);
 
 class SmcfJsonDecoder {
 private:
+	char *jsonPtr; /* current pointer in json expression */
+	jsonCallback_t callback; /* user function */
+	void *context; /* pointer for any user data that will be used in callback */
+
 	static void skipSpace(char *&str);
-	uint8_t readElements(char*& jsonExpr, int (*callback)(int,void*), const char delimiters[2],
-			uint8_t(SmcfJsonDecoder::*readElement)(char*&,int(*)(int,void*)));
+	uint8_t readElements(const char delimiters[2],
+			uint8_t(SmcfJsonDecoder::*readElement)(void));
 
 	uint8_t readString(char *&expr, char*dest, int maxDestSize);
-	uint8_t readObjMember(char*& jsonExpr, int (* callback)(int,void *));
-	uint8_t readObject(char*& jsonExpr, int (* callback)(int,void *));
-	uint8_t readArray(char*& jsonExpr, int (* callback)(int,void *));
-	uint8_t readNumber(char*& jsonExpr, int (* callback)(int,void *));
-	uint8_t readValue(char*& jsonExpr, int (* callback)(int,void *));
+	uint8_t readObjMember();
+	uint8_t readObject();
+	uint8_t readArray();
+	uint8_t readNumber();
+	uint8_t readBoolean();
+	uint8_t readValue();
 public:
 
-	uint8_t decode(char *jsonExpr, int (* callback)(int,void *));
+	uint8_t decode(char *jsonExpr,  jsonCallback_t callback, void *context);
+	uint8_t decode(char *jsonExpr,  jsonCallback_t callback) {
+		return decode(jsonExpr, callback, NULL);
+	}
 };
 //=============================
 

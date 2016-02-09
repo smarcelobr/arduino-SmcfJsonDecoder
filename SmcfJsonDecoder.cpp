@@ -5,9 +5,6 @@
  *      Author: SERGIO M C FIGUEIREDO
  */
 #include "SmcfJsonDecoder.h"
-#include <cstring>
-#include <cstdlib>
-#include <cctype>
 
 using namespace std;
 
@@ -17,9 +14,9 @@ inline void SmcfJsonDecoder::skipSpace(char*& str) {
 
 uint8_t SmcfJsonDecoder::readString(char *&expr, char *dest, int maxDestSize){
 #ifdef JSON_DEBUG
-	Serial.print("readString(");
+	Serial.print(F("readString("));
     Serial.print(expr);
-    Serial.println(");");
+    Serial.println(F(");"));
 #endif
 	skipSpace(expr);
 	if (*expr!='"') {
@@ -63,21 +60,22 @@ uint8_t SmcfJsonDecoder::readString(char *&expr, char *dest, int maxDestSize){
 	return JSON_ERR_NO_ERROR;
 }
 
-uint8_t SmcfJsonDecoder::readObjMember(char*& jsonExpr, int (*callback)(int,void *)) {
+uint8_t SmcfJsonDecoder::readObjMember() {
 #ifdef JSON_DEBUG
-	Serial.print("readObjMember(");
-    Serial.print(jsonExpr);
-    Serial.println("); (in)");
+	Serial.print(F("readObjMember("));
+    Serial.print(this->jsonPtr);
+    Serial.println(F("); (in)"));
 #endif
 	char key[JSON_KEY_MAX_SIZE+1];
-	int err=readString(jsonExpr,key,JSON_KEY_MAX_SIZE);
+	int err=readString(this->jsonPtr,key,JSON_KEY_MAX_SIZE);
 	if (err) {
 	   return err;
 	}
-	callback(JSON_ELEMENT_OBJECT_KEY, key);
-    skipSpace(jsonExpr);
-    if (*jsonExpr==':') {
-    	err = readValue(++jsonExpr, callback);
+	callback(JSON_ELEMENT_OBJECT_KEY, key, this->context);
+    skipSpace(this->jsonPtr);
+    if (*this->jsonPtr==':') {
+    	this->jsonPtr++; // skip colon
+    	err = readValue();
     	if (err) {
     	   return err;
     	}
@@ -85,139 +83,161 @@ uint8_t SmcfJsonDecoder::readObjMember(char*& jsonExpr, int (*callback)(int,void
  	   return JSON_ERR_COLON_EXPECTED;
     }
 #ifdef JSON_DEBUG
-    Serial.print("readObjMember(");
-    Serial.print(jsonExpr);
-    Serial.println("); (out)");
+    Serial.print(F("readObjMember("));
+    Serial.print(this->jsonPtr);
+    Serial.println(F("); (out)"));
 #endif
     return JSON_ERR_NO_ERROR;
 }
 
-uint8_t SmcfJsonDecoder::readElements(char*& jsonExpr, int (*callback)(int,void *), const char delimiters[2],
-		uint8_t(SmcfJsonDecoder::*readElement)(char*&,int(*)(int,void *))) {
+uint8_t SmcfJsonDecoder::readElements(const char delimiters[2],
+		uint8_t(SmcfJsonDecoder::*readElement)(void)) {
 #ifdef JSON_DEBUG
-    Serial.print("readElements(");
-    Serial.print(jsonExpr);
-    Serial.println(");");
+    Serial.print(F("readElements("));
+    Serial.print(this->jsonPtr);
+    Serial.println(F(");"));
 #endif
     int err;
-	skipSpace(jsonExpr);
-	if (*jsonExpr!=delimiters[0]) {
+	skipSpace(this->jsonPtr);
+	if (*this->jsonPtr!=delimiters[0]) {
 		return JSON_ERR_LEFT_DELIMITER_EXPECTED;
 	}
-    skipSpace(++jsonExpr);// pula o delimitador inicial e espaços subsequentes
-	while (*jsonExpr && *jsonExpr!=delimiters[1]) {
-		err=((this)->*(readElement))(jsonExpr, callback);
+    skipSpace(++this->jsonPtr);// pula o delimitador inicial e espaços subsequentes
+	while (*this->jsonPtr && *this->jsonPtr!=delimiters[1]) {
+		err=((this)->*(readElement))();
 		if (err) {
 		   return err;
 		}
-		skipSpace(jsonExpr);
-	    if (*jsonExpr==',') {
+		skipSpace(this->jsonPtr);
+	    if (*this->jsonPtr==',') {
 	    	// encontrou virgula? le proximo valor
-	    	jsonExpr++;
+	    	this->jsonPtr++;
 	    	continue;
 	    }
 	    // nao tem virgula? entao confere se eh o delimitador final
-	    if (*jsonExpr!=delimiters[1]) {
+	    if (*this->jsonPtr!=delimiters[1]) {
     		return JSON_ERR_RIGHT_DELIMITER_EXPECTED;
     	}
 	}
-    jsonExpr++; // pula delimitador final
+    this->jsonPtr++; // pula delimitador final
     return JSON_ERR_NO_ERROR;
 }
 
-uint8_t SmcfJsonDecoder::readNumber(char*& jsonExpr, int (*callback)(int,void *)) {
+uint8_t SmcfJsonDecoder::readNumber() {
 #ifdef JSON_DEBUG
-    Serial.print("readNumber(");
-    Serial.print(jsonExpr);
-    Serial.println(");");
+    Serial.print(F("readNumber("));
+    Serial.print(this->jsonPtr);
+    Serial.println(F(");"));
 #endif
     char number[JSON_VALUE_MAX_SIZE+1];
     int len=0;
     bool isDouble = false;
-    while (*jsonExpr && (isdigit(*jsonExpr)||*jsonExpr=='.'||*jsonExpr=='-') && len<JSON_VALUE_MAX_SIZE) {
-    	isDouble = (*jsonExpr=='.'); // tem ponto decimal? converte para double
-    	number[len++] = *jsonExpr;
-    	jsonExpr++; // proximo digito
+    while (*this->jsonPtr && (isdigit(*this->jsonPtr)||*this->jsonPtr=='.'||*this->jsonPtr=='-') && len<JSON_VALUE_MAX_SIZE) {
+    	if (!isDouble) isDouble = (*this->jsonPtr=='.'); // tem ponto decimal? converte para double
+    	number[len++] = *this->jsonPtr;
+    	this->jsonPtr++; // proximo digito
     }
     if (isDouble) {
     	double doubleValue = atof(number);
-		callback(JSON_ELEMENT_NUMBER_DOUBLE, &doubleValue);
+		return callback(JSON_ELEMENT_NUMBER_DOUBLE, &doubleValue, this->context);
     } else {
 		long longValue = atol(number);
-		callback(JSON_ELEMENT_NUMBER_LONG, &longValue);
+		return callback(JSON_ELEMENT_NUMBER_LONG, &longValue, this->context);
     }
-	return JSON_ERR_NO_ERROR;
 }
 
-uint8_t SmcfJsonDecoder::readObject(char*& jsonExpr, int (*callback)(int,void *)) {
-	callback(JSON_ELEMENT_OBJECT_START, NULL);
-	int err=readElements(jsonExpr, callback, "{}", &SmcfJsonDecoder::readObjMember);
-	callback(JSON_ELEMENT_OBJECT_END, NULL);
-	return err;
-}
-
-uint8_t SmcfJsonDecoder::readArray(char*& jsonExpr, int (*callback)(int,void *)) {
-	callback(JSON_ELEMENT_ARRAY_START, NULL);
-	int err=readElements(jsonExpr, callback, "[]", &SmcfJsonDecoder::readValue);
-	callback(JSON_ELEMENT_ARRAY_END, NULL);
-	return err;
-}
-
-uint8_t SmcfJsonDecoder::readValue(char*& jsonExpr, int (*callback)(int,void *)) {
+uint8_t SmcfJsonDecoder::readBoolean() {
 #ifdef JSON_DEBUG
-    Serial.print("readValue(");
-    Serial.print(jsonExpr);
-    Serial.println("); (in)");
+    Serial.print(F("readBoolean("));
+    Serial.print(this->jsonPtr);
+    Serial.println(F(");"));
+#endif
+	boolean value;
+	if (memcmp_P(this->jsonPtr,F("true"),4)==0) {
+		value = true;
+		this->jsonPtr+=4;
+	} else if (memcmp_P(this->jsonPtr,F("false"),5)==0) {
+		value = false;
+		this->jsonPtr+=5;
+	} else {
+		return JSON_ERR_INVALID_BOOLEAN_VALUE;
+	}
+	return callback(JSON_ELEMENT_BOOLEAN, &value, this->context);
+}
+
+uint8_t SmcfJsonDecoder::readObject() {
+	callback(JSON_ELEMENT_OBJECT_START, NULL, this->context);
+	int err=readElements("{}", &SmcfJsonDecoder::readObjMember);
+	callback(JSON_ELEMENT_OBJECT_END, NULL, this->context);
+	return err;
+}
+
+uint8_t SmcfJsonDecoder::readArray() {
+	callback(JSON_ELEMENT_ARRAY_START, NULL, this->context);
+	int err=readElements("[]", &SmcfJsonDecoder::readValue);
+	callback(JSON_ELEMENT_ARRAY_END, NULL, this->context);
+	return err;
+}
+
+uint8_t SmcfJsonDecoder::readValue() {
+#ifdef JSON_DEBUG
+    Serial.print(F("readValue("));
+    Serial.print(this->jsonPtr);
+    Serial.println(F("); (in)"));
 #endif
     uint8_t err=JSON_ERR_INVALID_JSON_EXPRESSION;
-	skipSpace(jsonExpr);
-	switch (*jsonExpr) {
+	skipSpace(this->jsonPtr);
+	switch (*this->jsonPtr) {
 	case '{':
-	   err=readObject(jsonExpr,callback);
+	   err=readObject();
 	   break;
 	case '[':
-	   err=readArray(jsonExpr,callback);
+	   err=readArray();
 	   break;
 	case '"':
 	   char str[JSON_VALUE_MAX_SIZE+1];
-	   err=readString(jsonExpr, str, JSON_VALUE_MAX_SIZE);
-	   if (!err) callback(JSON_ELEMENT_STRING, str);
+	   err=readString(this->jsonPtr, str, JSON_VALUE_MAX_SIZE);
+	   if (!err) callback(JSON_ELEMENT_STRING, str, this->context);
 	   break;
 	case 't':
 	case 'f':
-		// todo ler boolean
+		err=readBoolean();
 		break;
 	case 'n':
 		// todo ler null
 		break;
 	case '0'...'9':
 	case '-':
-	   err=readNumber(jsonExpr,callback);
+	   err=readNumber();
        break;
     }
 #ifdef JSON_DEBUG
-    Serial.print("readValue(");
-    Serial.print(jsonExpr);
-    Serial.println("); (out)");
+    Serial.print(F("readValue("));
+    Serial.print(this->jsonPtr);
+    Serial.println(F("); (out)"));
 #endif
     return err;
 }
 
-uint8_t SmcfJsonDecoder::decode(char *jsonExpr, int (*callback)(int,void *)) {
+uint8_t SmcfJsonDecoder::decode(char jsonExpr[],  jsonCallback_t callback, void *context) {
+	this->jsonPtr=jsonExpr;
+	this->callback=callback;
+	this->context=context;
+
 #ifdef JSON_DEBUG
-    Serial.print("decode(");
-    Serial.print(jsonExpr);
-    Serial.println(");");
+    Serial.print(F("decode("));
+    Serial.print(this->jsonPtr);
+    Serial.println(F(");"));
 #endif
-    int err=readValue(jsonExpr, callback);
+    int err=readValue();
 	if (err) return err;
 	// após a leitura do valor, a string deve ter acabado ou só conter espaços...
-	skipSpace(jsonExpr);
-	if (*jsonExpr) {
+	skipSpace(this->jsonPtr);
+	if (*this->jsonPtr) {
 #ifdef JSON_DEBUG
-		Serial.print("caracteres invalidos '");
-		Serial.print(jsonExpr);
-		Serial.println("'");
+		Serial.print(F("caracteres invalidos '"));
+		Serial.print(this->jsonPtr);
+		Serial.println(F("'"));
 #endif
 		err = JSON_ERR_INVALID_CHAR_AFTER_JSON;
 	}
