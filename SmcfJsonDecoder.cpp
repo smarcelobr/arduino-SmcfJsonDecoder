@@ -68,10 +68,9 @@ uint8_t SmcfJsonDecoder::readObjMember() {
 #endif
 	char key[JSON_KEY_MAX_SIZE+1];
 	int err=readString(this->jsonPtr,key,JSON_KEY_MAX_SIZE);
-	if (err) {
-	   return err;
-	}
-	callback(JSON_ELEMENT_OBJECT_KEY, key, this->context);
+	if (err) {return err;}
+	err=callback(JSON_ELEMENT_OBJECT_KEY, key, this->context);
+	if (err) {return err;}
     skipSpace(this->jsonPtr);
     if (*this->jsonPtr==':') {
     	this->jsonPtr++; // skip colon
@@ -166,16 +165,16 @@ uint8_t SmcfJsonDecoder::readBoolean() {
 }
 
 uint8_t SmcfJsonDecoder::readObject() {
-	callback(JSON_ELEMENT_OBJECT_START, NULL, this->context);
-	int err=readElements("{}", &SmcfJsonDecoder::readObjMember);
-	callback(JSON_ELEMENT_OBJECT_END, NULL, this->context);
+	int err=callback(JSON_ELEMENT_OBJECT_START, NULL, this->context);
+	if (!err) err=readElements("{}", &SmcfJsonDecoder::readObjMember);
+	if (!err) err=callback(JSON_ELEMENT_OBJECT_END, NULL, this->context);
 	return err;
 }
 
 uint8_t SmcfJsonDecoder::readArray() {
-	callback(JSON_ELEMENT_ARRAY_START, NULL, this->context);
-	int err=readElements("[]", &SmcfJsonDecoder::readValue);
-	callback(JSON_ELEMENT_ARRAY_END, NULL, this->context);
+	int err=callback(JSON_ELEMENT_ARRAY_START, NULL, this->context);
+	if (!err) err=readElements("[]", &SmcfJsonDecoder::readValue);
+	if (!err) err=callback(JSON_ELEMENT_ARRAY_END, NULL, this->context);
 	return err;
 }
 
@@ -197,7 +196,7 @@ uint8_t SmcfJsonDecoder::readValue() {
 	case '"':
 	   char str[JSON_VALUE_MAX_SIZE+1];
 	   err=readString(this->jsonPtr, str, JSON_VALUE_MAX_SIZE);
-	   if (!err) callback(JSON_ELEMENT_STRING, str, this->context);
+	   if (!err) err=callback(JSON_ELEMENT_STRING, str, this->context);
 	   break;
 	case 't':
 	case 'f':

@@ -62,11 +62,7 @@ private:
 	uint8_t readBoolean();
 	uint8_t readValue();
 public:
-
 	uint8_t decode(char *jsonExpr,  jsonCallback_t callback, void *context);
-	uint8_t decode(char *jsonExpr,  jsonCallback_t callback) {
-		return decode(jsonExpr, callback, NULL);
-	}
 };
 //=============================
 
